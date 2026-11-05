@@ -1,12 +1,14 @@
 # C-Dir
 
-**Q-Dir + Everything** 을 하나로 합친 Windows 파일 관리자입니다.
+**다중 창 파일 탐색과 전체 드라이브 즉시 검색**을 하나로 합친 Windows 파일 관리자입니다.
 
-- **Q-Dir 스타일**: 1 / 2 / 3 / 4 분할 창에서 동시에 여러 폴더를 탐색, 창마다 여러 탭 지원
-- **Everything 스타일**: F3 한 번으로 전체 드라이브를 즉시 검색 (Everything SDK 연동, 미설치 시 내장 인덱스로 자동 대체)
+- **다중 창**: Q-Dir 스타일의 1 / 2 / 3 / 4 분할 창에서 동시에 여러 폴더를 탐색, 창마다 여러 탭 지원
+- **즉시 검색**: F3 한 번으로 전체 드라이브를 즉시 검색 (Everything 연동은 선택 사항, 미설치 시 내장 인덱스로 자동 대체)
 - **빠른 이동**: 클릭 가능한 경로(브레드크럼), 지연 로딩 폴더 트리, 폴더 즐겨찾기
 
 ![C-Dir](docs/screenshot.png)
+
+> Everything 연동은 선택 사항입니다. Everything이 설치되어 있지 않으면 내장 인덱스로 검색합니다.
 
 ## 주요 기능
 
@@ -47,6 +49,8 @@ C-Dir는 **Everything이 설치되어 있으면 Everything의 색인을 그대�
 4. Everything을 나중에 설치했다면 앱 메뉴(⋯) → **Everything 다시 감지**를 누르세요.
 
 > Everything이 없거나 실행 중이 아니면 자동으로 **내장 인덱스**로 검색합니다.
+
+> C-Dir는 `Everything.exe` / `Everything64.dll`을 포함하거나 재배포하지 않으며, 사용자가 설치한 Everything을 문서화된 SDK 방식으로 호출합니다.
 
 ## 내장 인덱스
 
@@ -129,11 +133,21 @@ Services/
   FileClipboard.cs         내부/시스템 클립보드
 Themes/Base.xaml           색상 토큰과 컨트롤 스타일
 Dialogs/InputDialog.xaml   이름 입력 대화상자
+LICENSE                    MIT 라이선스
+THIRD-PARTY-NOTICES.md     제3자 라이선스 고지
 ```
+
+## 상표 및 비공식 고지
+
+C-Dir는 voidtools 및 Q-Dir 개발자와 제휴하거나 후원받지 않은 독립 프로젝트입니다. **Everything**과 **Q-Dir**는 각 소유자의 상표입니다. 이 프로젝트는 해당 제품의 소스 코드, 아이콘, 로고를 포함하지 않으며, Everything 연동은 사용자 PC에 설치된 공식 SDK를 호출하는 방식으로 동작합니다.
+
+## 라이선스
+
+이 프로젝트는 MIT 라이선스로 배포됩니다. 자세한 내용은 [LICENSE](LICENSE)를 참고하세요. Everything SDK 등 제3자 구성 요소의 고지는 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)에 있습니다. 라이선스는 각 소유자의 상표 사용 권한을 부여하지 않습니다.
 
 ## 제한 사항
 
 - 내장 인덱스는 전체 재스캔 방식입니다 (USN 저널 증분 갱신은 미지원). 필요할 때 **인덱스 재생성**을 사용하세요.
 - 심볼릭 링크·정션(`ReparsePoint`)과 접근 불가 폴더는 인덱싱에서 제외됩니다.
 - 네트워크 드라이브는 기본 인덱싱 대상이 아닙니다.
-- Windows 10/11 x64 전용입니다 (WPF + `Everything64.dll`).
+- Windows 10/11 x64 전용입니다 (WPF, .NET 10, 선택적 `Everything64.dll` 연동).

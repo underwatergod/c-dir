@@ -12,7 +12,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Version>1.0.0</Version>
     <Product>C-Dir</Product>
-    <Description>Q-Dir style multi-pane file manager with Everything style instant search</Description>
+    <Description>Multi-pane file manager with optional Everything search integration</Description>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 

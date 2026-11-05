@@ -654,16 +654,18 @@ public partial class MainWindow : Window
 
         var about = new MenuItem { Header = "정보" };
         about.Click += (_, _) => MessageBox.Show(
-            "C-Dir 1.0\n\nQ-Dir 스타일 다중 창 파일 관리자와 Everything 스타일 즉시 검색을 하나로 합친 프로그램입니다.\n\n" +
+            "C-Dir 1.0\n\n다중 창 파일 탐색과 전체 드라이브 즉시 검색을 하나로 합친 Windows 파일 관리자입니다.\n\n" +
             "• 1·2·3·4 분할 탐색 (Ctrl+1~4)\n" +
             "• 창마다 여러 탭 (Ctrl+T 새 탭, Ctrl+W 닫기, Ctrl+PgUp/PgDn 전환)\n" +
             "• 주소 표시줄 경로 클릭으로 상위 폴더 이동, 폴더 트리 표시\n" +
             "• 별(☆) 메뉴 또는 폴더 우클릭으로 즐겨찾기 추가·제거\n" +
-            "• F3 즉시 검색: Everything SDK가 있으면 Everything, 없으면 내장 인덱스\n" +
+            "• F3 즉시 검색: Everything 연동 시 Everything 색인, 미설치 시 내장 인덱스\n" +
             "• Ctrl+C/X/V, F2, Delete, Ctrl+Shift+N 등 탐색기 단축키\n\n" +
             $"검색 공급자: {_searchService.ProviderName}\n" +
             $"내장 인덱스: {_searchService.Index.Count:N0}개\n" +
-            $"설정: {SettingsStore.DataDirectory}",
+            $"설정: {SettingsStore.DataDirectory}\n\n" +
+            "C-Dir는 voidtools 및 Q-Dir 개발자와 제휴·후원 관계가 없는 독립 프로젝트입니다.\n" +
+            "Everything과 Q-Dir는 각 소유자의 상표입니다.",
             "C-Dir 정보", MessageBoxButton.OK, MessageBoxImage.Information);
         menu.Items.Add(about);
 
