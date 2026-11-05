@@ -85,6 +85,7 @@
                                      BorderThickness="0"
                                      Padding="0,5"
                                      Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="regex: 로 시작하면 파일 이름을 정규식으로 검색합니다. 예: regex:^IMG_\d{4}"
                                      KeyDown="OnSearchKeyDown" />
 
                             <TextBlock Text="전체 드라이브 즉시 검색   (F3)"
@@ -175,6 +176,8 @@
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Text="검색" FontWeight="SemiBold" FontSize="13" />
                         <TextBlock Text="{Binding StatusText}" Margin="10,1,0,0" FontSize="11.5"
+                                   MaxWidth="560" TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding StatusText}"
                                    Foreground="{DynamicResource SubTextBrush}" VerticalAlignment="Center" />
                     </StackPanel>
 
@@ -237,11 +240,19 @@
                         </ListView.View>
 
                         <ListView.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="열기" Click="OnOpenSearchResult" />
-                                <MenuItem Header="폴더에서 보기" Click="OnRevealSearchResult" />
-                                <MenuItem Header="경로 복사" Click="OnCopySearchPath" />
-                                <MenuItem Header="속성" Click="OnSearchResultProperties" />
+                            <ContextMenu Opened="OnSearchContextMenuOpened">
+                                <MenuItem x:Name="SearchOpenMenuItem" Header="열기" Click="OnOpenSearchResult" />
+                                <MenuItem x:Name="SearchRevealMenuItem" Header="폴더에서 보기" Click="OnRevealSearchResult" />
+                                <Separator />
+                                <MenuItem x:Name="SearchCopyMenuItem" Header="복사..." Click="OnCopySearchResults"
+                                          ToolTip="선택한 항목을 대상 폴더로 복사" />
+                                <MenuItem x:Name="SearchMoveMenuItem" Header="이동..." Click="OnMoveSearchResults"
+                                          ToolTip="선택한 항목을 대상 폴더로 이동" />
+                                <MenuItem x:Name="SearchRenameMenuItem" Header="이름 바꾸기..." Click="OnRenameSearchResult" />
+                                <MenuItem x:Name="SearchDeleteMenuItem" Header="삭제 (휴지통)" Click="OnDeleteSearchResults" />
+                                <Separator />
+                                <MenuItem x:Name="SearchCopyPathMenuItem" Header="경로 복사" Click="OnCopySearchPath" />
+                                <MenuItem x:Name="SearchPropertiesMenuItem" Header="속성" Click="OnSearchResultProperties" />
                             </ContextMenu>
                         </ListView.ContextMenu>
                     </ListView>

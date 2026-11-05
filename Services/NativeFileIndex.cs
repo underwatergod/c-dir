@@ -91,11 +91,11 @@ public sealed class NativeFileIndex
 
     public async Task<List<FileItem>> SearchAsync(string query, int limit, CancellationToken cancellationToken)
     {
-        var paths = _paths;
-        if (paths.Length == 0) return [];
-
         var terms = ParseQuery(query);
         if (terms.Count == 0) return [];
+
+        var paths = _paths;
+        if (paths.Length == 0) return [];
 
         var matches = await Task.Run(() => Match(paths, terms, Math.Max(limit * 4, 200), cancellationToken), cancellationToken);
         if (matches.Count == 0) return [];
@@ -175,10 +175,18 @@ public sealed class NativeFileIndex
         var results = new List<(string, bool)>(Math.Min(maxMatches, 512));
         var array = terms.ToArray();
         var counter = 0;
+        var regexSearch = array.Any(term => term.Kind == TermKind.Regex);
+        var started = regexSearch ? Stopwatch.StartNew() : null;
+        var checkMask = regexSearch ? 0x07 : 0xFFF;
 
         foreach (var path in paths)
         {
-            if ((++counter & 0xFFF) == 0 && cancellationToken.IsCancellationRequested) break;
+            if ((++counter & checkMask) == 0)
+            {
+                if (cancellationToken.IsCancellationRequested) break;
+                if (started is not null && started.Elapsed > SearchQuery.TotalRegexTimeout)
+                    throw new SearchQueryException("정규식 검색이 너무 오래 걸려 중단했습니다. 검색 범위를 좁히거나 패턴을 단순하게 만들어 주세요.");
+            }
 
             int separator = path.LastIndexOf('\\');
             var name = separator >= 0 ? path[(separator + 1)..] : path;
@@ -216,6 +224,10 @@ public sealed class NativeFileIndex
                     }
                     break;
 
+                case TermKind.Regex:
+                    if (!SearchQuery.IsMatch(term.Regex!, name)) return (false, false);
+                    break;
+
                 default:
                     if (!name.Contains(term.Text, StringComparison.OrdinalIgnoreCase))
                     {
@@ -231,6 +243,12 @@ public sealed class NativeFileIndex
 
     private static List<Term> ParseQuery(string query)
     {
+        if (SearchQuery.IsRegexQuery(query))
+        {
+            var regex = SearchQuery.CompileRegex(SearchQuery.GetRegexPattern(query));
+            return [Term.RegexTerm(regex)];
+        }
+
         var terms = new List<Term>();
 
         foreach (var raw in Tokenize(query))
@@ -297,41 +315,7 @@ public sealed class NativeFileIndex
 
         Parallel.For(0, paths.Count, new ParallelOptions { CancellationToken = cancellationToken }, i =>
         {
-            var path = paths[i];
-            try
-            {
-                var attributes = File.GetAttributes(path);
-                var isDirectory = (attributes & FileAttributes.Directory) != 0;
-
-                if (isDirectory)
-                {
-                    var info = new DirectoryInfo(path);
-                    items[i] = new FileItem
-                    {
-                        Name = info.Name,
-                        FullPath = path,
-                        IsDirectory = true,
-                        Modified = info.LastWriteTime,
-                    };
-                }
-                else
-                {
-                    var info = new FileInfo(path);
-                    items[i] = new FileItem
-                    {
-                        Name = info.Name,
-                        FullPath = path,
-                        IsDirectory = false,
-                        Size = info.Length,
-                        Modified = info.LastWriteTime,
-                        Extension = info.Extension,
-                    };
-                }
-            }
-            catch
-            {
-                items[i] = null;
-            }
+            items[i] = FileItem.FromPath(paths[i]);
         });
 
         return items.Where(i => i is not null).Cast<FileItem>().ToList();
@@ -369,7 +353,7 @@ public sealed class NativeFileIndex
         return (paths, stamp);
     }
 
-    private enum TermKind { Plain, Wildcard, Extension }
+    private enum TermKind { Plain, Wildcard, Extension, Regex }
 
     private readonly struct Term
     {
@@ -381,5 +365,6 @@ public sealed class NativeFileIndex
         public static Term Plain(string text) => new() { Kind = TermKind.Plain, Text = text };
         public static Term Wildcard(Regex regex) => new() { Kind = TermKind.Wildcard, Regex = regex, Text = regex.ToString() };
         public static Term Extension(string[] extensions) => new() { Kind = TermKind.Extension, Extensions = extensions, Text = "ext" };
+        public static Term RegexTerm(Regex regex) => new() { Kind = TermKind.Regex, Regex = regex, Text = regex.ToString() };
     }
 }

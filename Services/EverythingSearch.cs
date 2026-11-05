@@ -58,6 +58,9 @@ internal static class EverythingSdk
 
     [DllImport(Dll)]
     public static extern bool Everything_IsDBLoaded();
+
+    [DllImport(Dll)]
+    public static extern uint Everything_GetLastError();
 }
 
 public sealed class EverythingUnavailableException(string message) : Exception(message);
@@ -69,8 +72,11 @@ public sealed class EverythingSearchService
     private bool _probed;
     private bool _available;
 
+    private const uint EverythingErrorIpc = 2;
+    private const uint EverythingErrorInvalidParameter = 9;
+
     public bool IsAvailable => _available;
-    public string? UnavailableReason { get; private set; }
+    public string? UnavailableReason { get; internal set; }
 
     /// <summary>Forces the next Probe() to retry loading/using the SDK.</summary>
     public void ResetProbe()
@@ -129,10 +135,13 @@ public sealed class EverythingSearchService
         {
             if (!Probe()) throw new EverythingUnavailableException(UnavailableReason ?? "Everything을 사용할 수 없습니다.");
 
-            EverythingSdk.Everything_SetMatchPath(true);
+            var regexMode = SearchQuery.IsRegexQuery(query);
+            var searchText = regexMode ? SearchQuery.GetRegexPattern(query) : query;
+
+            EverythingSdk.Everything_SetMatchPath(!regexMode);
             EverythingSdk.Everything_SetMatchCase(false);
-            EverythingSdk.Everything_SetRegex(false);
-            EverythingSdk.Everything_SetSearchW(query);
+            EverythingSdk.Everything_SetRegex(regexMode);
+            EverythingSdk.Everything_SetSearchW(searchText);
             EverythingSdk.Everything_SetMax((uint)Math.Max(1, limit));
             EverythingSdk.Everything_SetRequestFlags(
                 EverythingSdk.RequestFileName |
@@ -142,7 +151,16 @@ public sealed class EverythingSearchService
                 EverythingSdk.RequestDateModified);
 
             if (!EverythingSdk.Everything_QueryW(true))
-                throw new EverythingUnavailableException("Everything이 실행 중이 아닙니다.");
+            {
+                var error = EverythingSdk.Everything_GetLastError();
+                if (!EverythingSdk.Everything_IsDBLoaded() || error == EverythingErrorIpc)
+                    throw new EverythingUnavailableException("Everything이 실행 중이 아닙니다.");
+
+                if (regexMode || error == EverythingErrorInvalidParameter)
+                    throw new SearchQueryException("Everything이 검색어를 처리하지 못했습니다. 정규식 패턴을 확인해 주세요.");
+
+                throw new EverythingUnavailableException("Everything 검색에 실패했습니다.");
+            }
 
             var count = EverythingSdk.Everything_GetNumResults();
             var results = new List<Models.FileItem>((int)count);

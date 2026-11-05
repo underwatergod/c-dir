@@ -70,10 +70,32 @@ public sealed class SearchViewModel : INotifyPropertyChanged
     public void Close()
     {
         _cts?.Cancel();
+        _cts = null;
+        IsSearching = false;
         Query = "";
         Results.Clear();
         StatusText = "";
         IsOpen = false;
+    }
+
+    public void CancelPendingSearch()
+    {
+        var cts = _cts;
+        _cts = null;
+        cts?.Cancel();
+
+        if (!IsSearching) return;
+        IsSearching = false;
+        StatusText = $"{Results.Count:N0}개 결과 · {_service.ProviderName}";
+    }
+
+    public void SetOperationStatus(string message) =>
+        StatusText = $"{Results.Count:N0}개 결과 · {_service.ProviderName} · {message}";
+
+    public void RefreshResultStatus()
+    {
+        if (IsSearching) return;
+        StatusText = $"{Results.Count:N0}개 결과 · {_service.ProviderName}";
     }
 
     public async Task SearchNowAsync()
@@ -81,12 +103,15 @@ public sealed class SearchViewModel : INotifyPropertyChanged
         _cts?.Cancel();
         if (string.IsNullOrWhiteSpace(_query))
         {
+            _cts = null;
+            IsSearching = false;
             Results.Clear();
             StatusText = "";
             IsOpen = false;
             return;
         }
 
+        var query = _query;
         var cts = new CancellationTokenSource();
         _cts = cts;
         IsOpen = true;
@@ -96,10 +121,16 @@ public sealed class SearchViewModel : INotifyPropertyChanged
         try
         {
             await Task.Delay(180, cts.Token);
-            var outcome = await _service.SearchAsync(_query, 500, cts.Token);
+            var outcome = await Task.Run(() => _service.SearchAsync(query, 500, cts.Token), cts.Token);
             if (cts.IsCancellationRequested) return;
 
             Results.Clear();
+            if (!string.IsNullOrEmpty(outcome.Error))
+            {
+                StatusText = outcome.Error;
+                return;
+            }
+
             foreach (var item in outcome.Items) Results.Add(item);
 
             StatusText = outcome.Note is null
@@ -112,6 +143,7 @@ public sealed class SearchViewModel : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
+            Results.Clear();
             StatusText = $"검색 오류: {ex.Message}";
         }
         finally

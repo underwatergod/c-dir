@@ -25,6 +25,41 @@ public sealed class FileItem
     public string FolderText => DirectoryPath;
     public ImageSource? Icon => ShellIcons.GetIcon(this);
 
+    /// <summary>Builds a row from the current file system state, or null when the path cannot be read.</summary>
+    public static FileItem? FromPath(string fullPath)
+    {
+        try
+        {
+            var attributes = File.GetAttributes(fullPath);
+            if ((attributes & FileAttributes.Directory) != 0)
+            {
+                var info = new DirectoryInfo(fullPath);
+                return new FileItem
+                {
+                    Name = info.Name,
+                    FullPath = fullPath,
+                    IsDirectory = true,
+                    Modified = info.LastWriteTime,
+                };
+            }
+
+            var file = new FileInfo(fullPath);
+            return new FileItem
+            {
+                Name = file.Name,
+                FullPath = fullPath,
+                IsDirectory = false,
+                Size = file.Length,
+                Modified = file.LastWriteTime,
+                Extension = file.Extension,
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public static string FormatSize(long bytes)
     {
         if (bytes < 1024) return $"{bytes} B";

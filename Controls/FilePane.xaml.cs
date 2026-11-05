@@ -975,7 +975,7 @@ public partial class FilePane : UserControl
 
         var name = InputDialog.Show(Window.GetWindow(this), "이름 바꾸기", "새 이름:", item.Name);
         if (string.IsNullOrWhiteSpace(name) || name == item.Name) return;
-        if (!IsValidFileName(name))
+        if (!PathUtil.IsValidFileName(name))
         {
             MessageBox.Show("파일 이름에 사용할 수 없는 문자가 있습니다.", "C-Dir", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
@@ -1032,7 +1032,7 @@ public partial class FilePane : UserControl
 
         var name = InputDialog.Show(Window.GetWindow(this), "새 폴더", "폴더 이름:", "새 폴더");
         if (string.IsNullOrWhiteSpace(name)) return;
-        if (!IsValidFileName(name))
+        if (!PathUtil.IsValidFileName(name))
         {
             MessageBox.Show("폴더 이름에 사용할 수 없는 문자가 있습니다.", "C-Dir", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
@@ -1097,7 +1097,4 @@ public partial class FilePane : UserControl
 
         return null;
     }
-
-    private static bool IsValidFileName(string name) =>
-        name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0 && name is not "." and not "..";
 }

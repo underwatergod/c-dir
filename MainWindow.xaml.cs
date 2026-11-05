@@ -6,9 +6,11 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using CDir.Controls;
+using CDir.Dialogs;
 using CDir.Models;
 using CDir.Services;
 using CDir.ViewModels;
+using Microsoft.Win32;
 
 namespace CDir;
 
@@ -35,6 +37,7 @@ public partial class MainWindow : Window
         _search = new SearchViewModel(_searchService);
         SearchArea.DataContext = _search;
         ResultsPanel.DataContext = _search;
+        ShellOps.FileSystemChanged += OnFileSystemChangedForSearch;
 
         _panes.AddRange([Pane0, Pane1, Pane2, Pane3]);
         foreach (var pane in _panes)
@@ -396,6 +399,39 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (SearchList.IsKeyboardFocusWithin)
+        {
+            switch (e.Key)
+            {
+                case Key.Delete:
+                    e.Handled = true;
+                    DeleteSelectedSearchResults();
+                    return;
+
+                case Key.F2:
+                    e.Handled = true;
+                    RenameSelectedSearchResult();
+                    return;
+
+                case Key.C when ctrl && !shift:
+                    e.Handled = true;
+                    SetSearchClipboard(ClipboardMode.Copy);
+                    return;
+
+                case Key.X when ctrl && !shift:
+                    e.Handled = true;
+                    SetSearchClipboard(ClipboardMode.Cut);
+                    return;
+
+                case Key.V when ctrl && !shift:
+                    // Never paste into the active pane while the search result list has focus.
+                    e.Handled = true;
+                    return;
+            }
+
+            return;
+        }
+
         if (typing || _activePane is null) return;
 
         if (ctrl && !shift && e.Key == Key.C)
@@ -525,6 +561,16 @@ public partial class MainWindow : Window
             if (ctrl) _ = RevealFirstResultAsync();
             else if (SearchList.SelectedItem is FileItem item) OpenResult(item);
         }
+        else if (e.Key == Key.Delete)
+        {
+            e.Handled = true;
+            DeleteSelectedSearchResults();
+        }
+        else if (e.Key == Key.F2)
+        {
+            e.Handled = true;
+            RenameSelectedSearchResult();
+        }
         else if (e.Key == Key.Escape)
         {
             e.Handled = true;
@@ -534,8 +580,269 @@ public partial class MainWindow : Window
 
     private void OnSearchResultRightClick(object sender, MouseButtonEventArgs e)
     {
-        if (ItemsControl.ContainerFromElement(SearchList, (DependencyObject)e.OriginalSource) is not ListViewItem container) return;
-        if (!container.IsSelected) container.IsSelected = true;
+        if (ItemsControl.ContainerFromElement(SearchList, (DependencyObject)e.OriginalSource) is not ListViewItem container)
+        {
+            SearchList.SelectedItems.Clear();
+            return;
+        }
+
+        if (container.IsSelected) return;
+
+        if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == 0)
+            SearchList.SelectedItems.Clear();
+
+        container.IsSelected = true;
+    }
+
+    private void OnSearchContextMenuOpened(object sender, RoutedEventArgs e)
+    {
+        var count = SearchList.SelectedItems.Count;
+        var hasSelection = count > 0;
+
+        SearchOpenMenuItem.IsEnabled = hasSelection;
+        SearchRevealMenuItem.IsEnabled = hasSelection;
+        SearchCopyMenuItem.IsEnabled = hasSelection;
+        SearchMoveMenuItem.IsEnabled = hasSelection;
+        SearchRenameMenuItem.IsEnabled = count == 1;
+        SearchDeleteMenuItem.IsEnabled = hasSelection;
+        SearchCopyPathMenuItem.IsEnabled = hasSelection;
+        SearchPropertiesMenuItem.IsEnabled = hasSelection;
+    }
+
+    private List<FileItem> SelectedSearchItems()
+    {
+        var selected = SearchList.SelectedItems.Cast<FileItem>().ToList();
+        if (selected.Count <= 1) return selected;
+
+        // A selected folder already contains its selected children.
+        var result = new List<FileItem>(selected.Count);
+        foreach (var item in selected.OrderBy(i => i.FullPath.Length))
+        {
+            if (result.Any(parent => PathUtil.IsSameOrChild(item.FullPath, parent.FullPath))) continue;
+            result.Add(item);
+        }
+
+        return result;
+    }
+
+    private void OnCopySearchResults(object sender, RoutedEventArgs e)
+    {
+        var items = SelectedSearchItems();
+        if (items.Count == 0) return;
+
+        var destination = ChooseSearchDestination("복사할 폴더 선택", items);
+        if (destination is null || !ValidateSearchDestination(items, destination, moving: false)) return;
+
+        _search.CancelPendingSearch();
+        if (!ShellOps.Copy(items.Select(i => i.FullPath).ToList(), destination)) return;
+        _search.SetOperationStatus($"복사 완료 · {items.Count:N0}개 · {destination}");
+    }
+
+    private void OnMoveSearchResults(object sender, RoutedEventArgs e)
+    {
+        var items = SelectedSearchItems();
+        if (items.Count == 0) return;
+
+        var destination = ChooseSearchDestination("이동할 폴더 선택", items);
+        if (destination is null || !ValidateSearchDestination(items, destination, moving: true)) return;
+
+        _search.CancelPendingSearch();
+        var paths = items.Select(i => i.FullPath).ToList();
+        if (!ShellOps.Move(paths, destination)) return;
+
+        RemoveSearchResults(paths);
+        _search.SetOperationStatus($"이동 완료 · {items.Count:N0}개 · {destination}");
+    }
+
+    private void OnDeleteSearchResults(object sender, RoutedEventArgs e) => DeleteSelectedSearchResults();
+
+    private void DeleteSelectedSearchResults()
+    {
+        var items = SelectedSearchItems();
+        if (items.Count == 0) return;
+
+        if (items.Any(item => PathUtil.IsRoot(item.FullPath)))
+        {
+            MessageBox.Show("드라이브 루트는 삭제할 수 없습니다.", "C-Dir", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        _search.CancelPendingSearch();
+        var paths = items.Select(i => i.FullPath).ToList();
+        if (!ShellOps.DeleteToRecycleBin(paths)) return;
+
+        RemoveSearchResults(paths);
+        _search.SetOperationStatus($"삭제 완료 · {items.Count:N0}개");
+    }
+
+    private void OnRenameSearchResult(object sender, RoutedEventArgs e) => RenameSelectedSearchResult();
+
+    private void RenameSelectedSearchResult()
+    {
+        if (SearchList.SelectedItems.Count != 1 || SearchList.SelectedItem is not FileItem item) return;
+
+        var name = InputDialog.Show(this, "이름 바꾸기", "새 이름:", item.Name);
+        if (string.IsNullOrWhiteSpace(name) || name == item.Name) return;
+        if (!PathUtil.IsValidFileName(name))
+        {
+            MessageBox.Show("파일 이름에 사용할 수 없는 문자가 있습니다.", "C-Dir", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var parent = Path.GetDirectoryName(item.FullPath);
+        if (PathUtil.IsRoot(item.FullPath) || string.IsNullOrEmpty(parent))
+        {
+            MessageBox.Show("드라이브 루트 폴더의 이름은 바꿀 수 없습니다.", "C-Dir", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var target = Path.Combine(parent, name);
+        if (Directory.Exists(target) || File.Exists(target))
+        {
+            MessageBox.Show("같은 이름의 항목이 이미 있습니다.", "C-Dir", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        _search.CancelPendingSearch();
+        try
+        {
+            if (item.IsDirectory) Directory.Move(item.FullPath, target);
+            else File.Move(item.FullPath, target);
+
+            ReplaceSearchResultPath(item.FullPath, target);
+            ShellOps.NotifyChanged();
+            _search.SetOperationStatus($"이름 바꾸기 완료 · {name}");
+
+            var renamed = _search.Results.FirstOrDefault(
+                result => string.Equals(result.FullPath, target, StringComparison.OrdinalIgnoreCase));
+            if (renamed is not null)
+            {
+                SearchList.SelectedItem = renamed;
+                SearchList.ScrollIntoView(renamed);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"이름을 바꿀 수 없습니다.\n{ex.Message}", "C-Dir", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void SetSearchClipboard(ClipboardMode mode)
+    {
+        var items = SelectedSearchItems();
+        if (items.Count == 0) return;
+
+        if (items.Any(item => PathUtil.IsRoot(item.FullPath)))
+        {
+            _search.SetOperationStatus("드라이브 루트는 복사하거나 이동할 수 없습니다.");
+            return;
+        }
+
+        _search.CancelPendingSearch();
+        FileClipboard.Set(items.Select(i => i.FullPath), mode);
+        _search.SetOperationStatus(mode == ClipboardMode.Cut
+            ? $"이동할 항목 {items.Count:N0}개 · 대상 폴더에서 Ctrl+V"
+            : $"복사할 항목 {items.Count:N0}개 · 대상 폴더에서 Ctrl+V");
+    }
+
+    private string? ChooseSearchDestination(string title, IReadOnlyList<FileItem> items)
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = title,
+            Multiselect = false,
+            InitialDirectory = InitialSearchDestination(items),
+        };
+
+        try
+        {
+            return dialog.ShowDialog(this) == true ? dialog.FolderName : null;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"폴더 선택 대화상자를 열 수 없습니다.\n{ex.Message}",
+                "C-Dir", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return null;
+        }
+    }
+
+    private static string InitialSearchDestination(IReadOnlyList<FileItem> items)
+    {
+        var first = items.FirstOrDefault();
+        var parent = first is null ? null : Path.GetDirectoryName(first.FullPath);
+        if (!string.IsNullOrEmpty(parent) && Directory.Exists(parent)) return parent;
+
+        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return Directory.Exists(profile) ? profile : "C:\\";
+    }
+
+    private bool ValidateSearchDestination(IReadOnlyList<FileItem> items, string destination, bool moving)
+    {
+        if (!Directory.Exists(destination))
+        {
+            MessageBox.Show("대상 폴더를 찾을 수 없습니다.", "C-Dir", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        if (items.Any(item => PathUtil.IsRoot(item.FullPath)))
+        {
+            MessageBox.Show("드라이브 루트는 복사하거나 이동할 수 없습니다.", "C-Dir", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        foreach (var folder in items.Where(i => i.IsDirectory))
+        {
+            if (!PathUtil.IsSameOrChild(destination, folder.FullPath)) continue;
+
+            MessageBox.Show("폴더를 자기 자신이나 하위 폴더로 복사하거나 이동할 수 없습니다.",
+                "C-Dir", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        if (moving && items.All(item => IsDirectChildOf(item.FullPath, destination)))
+        {
+            MessageBox.Show("이미 같은 폴더에 있습니다.", "C-Dir", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool IsDirectChildOf(string path, string directory)
+    {
+        var parent = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(path));
+        if (parent is null) return false;
+
+        return Path.TrimEndingDirectorySeparator(Path.GetFullPath(parent))
+            .Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory)), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void RemoveSearchResults(IReadOnlyCollection<string> paths)
+    {
+        for (var i = _search.Results.Count - 1; i >= 0; i--)
+        {
+            var fullPath = _search.Results[i].FullPath;
+            if (paths.Any(path => PathUtil.IsSameOrChild(fullPath, path)))
+                _search.Results.RemoveAt(i);
+        }
+    }
+
+    private void ReplaceSearchResultPath(string oldPath, string newPath)
+    {
+        var oldRoot = Path.TrimEndingDirectorySeparator(oldPath);
+        var newRoot = Path.TrimEndingDirectorySeparator(newPath);
+
+        for (var i = _search.Results.Count - 1; i >= 0; i--)
+        {
+            var result = _search.Results[i];
+            if (!PathUtil.IsSameOrChild(result.FullPath, oldRoot)) continue;
+
+            var resultPath = Path.TrimEndingDirectorySeparator(result.FullPath);
+            var updatedPath = newRoot + resultPath[oldRoot.Length..];
+            var replacement = FileItem.FromPath(updatedPath);
+            if (replacement is null) _search.Results.RemoveAt(i);
+            else _search.Results[i] = replacement;
+        }
     }
 
     private void OnCopySearchPath(object sender, RoutedEventArgs e)
@@ -547,6 +854,27 @@ public partial class MainWindow : Window
     private void OnSearchResultProperties(object sender, RoutedEventArgs e)
     {
         if (SearchList.SelectedItem is FileItem item) ShellOps.ShowProperties(item.FullPath);
+    }
+
+    private void OnFileSystemChangedForSearch()
+    {
+        if (!_search.IsOpen || _search.Results.Count == 0) return;
+
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!_search.IsOpen) return;
+
+            var removed = 0;
+            for (var i = _search.Results.Count - 1; i >= 0; i--)
+            {
+                var path = _search.Results[i].FullPath;
+                if (File.Exists(path) || Directory.Exists(path)) continue;
+                _search.Results.RemoveAt(i);
+                removed++;
+            }
+
+            if (removed > 0) _search.RefreshResultStatus();
+        }));
     }
 
     // ---------- indexing / provider ----------
@@ -626,11 +954,11 @@ public partial class MainWindow : Window
         var detect = new MenuItem { Header = "Everything 다시 감지" };
         detect.Click += (_, _) =>
         {
-            _searchService.RefreshProvider();
+            var available = _searchService.RefreshProvider();
             UpdateProviderChip();
-            IndexStatusText.Text = _searchService.EverythingAvailable
+            IndexStatusText.Text = available
                 ? "Everything 검색 사용 중"
-                : "내장 인덱스 사용 중";
+                : _searchService.Everything.UnavailableReason ?? "내장 인덱스 사용 중";
         };
         menu.Items.Add(detect);
 
@@ -660,6 +988,7 @@ public partial class MainWindow : Window
             "• 주소 표시줄 경로 클릭으로 상위 폴더 이동, 폴더 트리 표시\n" +
             "• 별(☆) 메뉴 또는 폴더 우클릭으로 즐겨찾기 추가·제거\n" +
             "• F3 즉시 검색: Everything 연동 시 Everything 색인, 미설치 시 내장 인덱스\n" +
+            "• regex: 접두사로 파일 이름 정규식 검색, 결과 우클릭으로 복사·이동·이름 바꾸기·삭제\n" +
             "• Ctrl+C/X/V, F2, Delete, Ctrl+Shift+N 등 탐색기 단축키\n\n" +
             $"검색 공급자: {_searchService.ProviderName}\n" +
             $"내장 인덱스: {_searchService.Index.Count:N0}개\n" +
@@ -697,6 +1026,7 @@ public partial class MainWindow : Window
     private void OnClosing(object? sender, CancelEventArgs e)
     {
         _indexCts?.Cancel();
+        ShellOps.FileSystemChanged -= OnFileSystemChangedForSearch;
 
         var bounds = WindowState == WindowState.Normal
             ? new Rect(Left, Top, Width, Height)
