@@ -1,0 +1,402 @@
+<UserControl x:Class="CDir.Controls.FilePane"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:CDir.ViewModels"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance Type=vm:PaneHostViewModel}"
+             Background="Transparent">
+    <Border x:Name="RootBorder"
+            Background="{DynamicResource PanelBrush}"
+            CornerRadius="9"
+            SnapsToDevicePixels="True">
+        <Border.Style>
+            <Style TargetType="Border">
+                <Setter Property="BorderBrush" Value="{DynamicResource StrokeBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsActive, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                        <Setter Property="BorderThickness" Value="1.5" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Border.Style>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- tab strip -->
+            <Grid Grid.Row="0" Margin="5,5,5,1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <ScrollViewer x:Name="TabScroll"
+                              Grid.Column="0"
+                              HorizontalScrollBarVisibility="Hidden"
+                              VerticalScrollBarVisibility="Disabled"
+                              Padding="0,0,2,0">
+                    <ItemsControl x:Name="TabStrip" ItemsSource="{Binding Tabs}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border x:Name="TabBd"
+                                        Margin="0,0,3,0"
+                                        Padding="8,3,4,3"
+                                        MinWidth="108"
+                                        CornerRadius="6"
+                                        Cursor="Hand"
+                                        ToolTip="{Binding ToolTip}"
+                                        Tag="{Binding}"
+                                        MouseLeftButtonDown="OnTabMouseDown">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="Transparent" />
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="{DynamicResource HoverBrush}" />
+                                                </Trigger>
+                                                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding Header}"
+                                                   FontSize="12"
+                                                   VerticalAlignment="Center"
+                                                   MaxWidth="150"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <Button Grid.Column="1"
+                                                Content="&#xE711;"
+                                                Width="18"
+                                                Height="18"
+                                                FontSize="8"
+                                                Margin="6,0,0,0"
+                                                VerticalAlignment="Center"
+                                                HorizontalAlignment="Right"
+                                                Tag="{Binding}"
+                                                Click="OnTabClose"
+                                                ToolTip="탭 닫기 (Ctrl+W)"
+                                                Visibility="{Binding DataContext.CanCloseTabs, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVis}}">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
+                                                    <Setter Property="Opacity" Value="0" />
+                                                    <Setter Property="IsHitTestVisible" Value="False" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Border}}" Value="True">
+                                                            <Setter Property="Opacity" Value="1" />
+                                                            <Setter Property="IsHitTestVisible" Value="True" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <Button Grid.Column="1"
+                        Content="&#xE710;"
+                        Style="{StaticResource IconButton}"
+                        Width="26"
+                        Height="26"
+                        ToolTip="새 탭 (Ctrl+T)"
+                        Click="OnNewTab" />
+            </Grid>
+
+            <!-- navigation -->
+            <Grid Grid.Row="1" Margin="6,1,6,2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Button Grid.Column="0" Style="{StaticResource IconButton}" Content="&#xE72B;" ToolTip="뒤로 (Alt+←)"
+                        Click="OnBack" IsEnabled="{Binding Active.CanGoBack}" />
+                <Button Grid.Column="1" Style="{StaticResource IconButton}" Content="&#xE72A;" ToolTip="앞으로 (Alt+→)"
+                        Click="OnForward" IsEnabled="{Binding Active.CanGoForward}" />
+                <Button Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE74A;" ToolTip="위로 (Backspace)"
+                        Click="OnUp" />
+                <Button Grid.Column="3" Style="{StaticResource IconButton}" Content="&#xE72C;" ToolTip="새로 고침 (F5)"
+                        Click="OnRefresh" />
+
+                <!-- address bar: breadcrumb + editable path -->
+                <Border x:Name="AddressBar"
+                        Grid.Column="4"
+                        Margin="4,0"
+                        Height="30"
+                        VerticalAlignment="Center"
+                        Background="{DynamicResource InputBrush}"
+                        BorderBrush="{DynamicResource StrokeBrush}"
+                        BorderThickness="1"
+                        CornerRadius="7">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <ScrollViewer x:Name="BreadcrumbScroller"
+                                      Grid.Column="0"
+                                      HorizontalScrollBarVisibility="Hidden"
+                                      VerticalScrollBarVisibility="Disabled"
+                                      HorizontalContentAlignment="Stretch"
+                                      Padding="5,0,2,0"
+                                      VerticalAlignment="Center">
+                            <Grid>
+                                <Rectangle Fill="Transparent" MouseLeftButtonDown="OnBreadcrumbBackgroundClick" />
+                                <ItemsControl x:Name="BreadcrumbList"
+                                              ItemsSource="{Binding Active.Breadcrumbs}"
+                                              VerticalAlignment="Center">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <Button Style="{StaticResource CrumbButton}"
+                                                        Tag="{Binding FullPath}"
+                                                        Click="OnBreadcrumbClick">
+                                                    <TextBlock Text="{Binding Name}">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="FontSize" Value="12" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsLast}" Value="True">
+                                                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                                                        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </Button>
+                                                <TextBlock Text="›" Margin="0,0,1,0" FontSize="11" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource SubTextBrush}">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsLast}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Grid>
+                        </ScrollViewer>
+
+                        <TextBox x:Name="AddressBox"
+                                 Grid.Column="0"
+                                 Style="{StaticResource InputBox}"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 Padding="7,4"
+                                 FontSize="12.5"
+                                 Visibility="Collapsed"
+                                 Text="{Binding Active.AddressText, UpdateSourceTrigger=PropertyChanged}"
+                                 KeyDown="OnAddressKeyDown"
+                                 LostKeyboardFocus="OnAddressLostFocus" />
+
+                        <Button x:Name="EditAddressButton"
+                                Grid.Column="1"
+                                Content="&#xE70F;"
+                                Width="24"
+                                Height="24"
+                                Margin="0,0,3,0"
+                                FontSize="11"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="경로 직접 입력 (Ctrl+L)"
+                                Click="OnEditAddress" />
+                    </Grid>
+                </Border>
+
+                <Button x:Name="TreeButton" Grid.Column="5" Style="{StaticResource IconButton}" Content="&#xE8A9;"
+                        ToolTip="폴더 트리" Click="OnToggleTree" />
+                <Button x:Name="QuickButton" Grid.Column="6" Style="{StaticResource IconButton}" Content="&#xE734;"
+                        ToolTip="빠른 이동" Click="OnQuickMenu" />
+                <Button x:Name="MoreButton" Grid.Column="7" Style="{StaticResource IconButton}" Content="&#xE712;"
+                        ToolTip="더 보기" Click="OnMoreMenu" />
+            </Grid>
+
+            <!-- filter -->
+            <Grid Grid.Row="2" Margin="8,0,8,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="&#xE71C;" FontFamily="{StaticResource IconFont}" FontSize="11"
+                           Foreground="{DynamicResource SubTextBrush}" VerticalAlignment="Center" Margin="2,0,6,0" />
+
+                <Grid Grid.Column="1">
+                    <TextBox x:Name="FilterBox"
+                             Style="{StaticResource InputBox}"
+                             Padding="8,3"
+                             FontSize="12"
+                             Background="Transparent"
+                             Text="{Binding Active.FilterText, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBlock Text="현재 폴더 필터 (이름)"
+                               Margin="9,0,0,0"
+                               VerticalAlignment="Center"
+                               FontSize="12"
+                               IsHitTestVisible="False"
+                               Foreground="{DynamicResource SubTextBrush}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Text, ElementName=FilterBox}" Value="">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+            </Grid>
+
+            <!-- folder tree + file list -->
+            <Grid Grid.Row="3" Margin="0,0,0,3">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="TreeColumn" Width="0" />
+                    <ColumnDefinition x:Name="SplitterColumn" Width="0" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border x:Name="TreeHost"
+                        Grid.Column="0"
+                        Margin="6,0,2,2"
+                        Background="{DynamicResource PanelAltBrush}"
+                        CornerRadius="6"
+                        Visibility="Collapsed">
+                    <Border.Resources>
+                        <Style TargetType="ScrollBar" BasedOn="{StaticResource SlimScrollBar}" />
+                    </Border.Resources>
+                    <TreeView x:Name="FolderTree"
+                              Style="{StaticResource FolderTree}"
+                              SelectedItemChanged="OnTreeSelected"
+                              Padding="2,4" />
+                </Border>
+
+                <GridSplitter x:Name="TreeSplitter"
+                              Grid.Column="1"
+                              HorizontalAlignment="Stretch"
+                              VerticalAlignment="Stretch"
+                              Background="Transparent"
+                              ResizeBehavior="PreviousAndNext"
+                              ResizeDirection="Columns"
+                              Visibility="Collapsed" />
+
+                <ListView x:Name="FileList"
+                          Grid.Column="2"
+                          Margin="0,0,0,0"
+                          SelectionMode="Extended"
+                          MouseDoubleClick="OnListDoubleClick"
+                          KeyDown="OnListKeyDown"
+                          SelectionChanged="OnSelectionChanged"
+                          PreviewMouseRightButtonDown="OnListRightClick">
+                    <ListView.View>
+                        <GridView AllowsColumnReorder="False">
+                            <GridViewColumn Header="이름" Width="265">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Image Source="{Binding Icon}" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="크기" Width="88">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding SizeText}" HorizontalAlignment="Right" Foreground="{DynamicResource SubTextBrush}" />
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="수정한 날짜" Width="128">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding ModifiedText}" Foreground="{DynamicResource SubTextBrush}" />
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="유형" Width="90">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding TypeText}" Foreground="{DynamicResource SubTextBrush}" />
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                        </GridView>
+                    </ListView.View>
+
+                    <ListView.ContextMenu>
+                        <ContextMenu Opened="OnFileContextMenuOpened">
+                            <MenuItem Header="열기" Click="OnOpen" />
+                            <MenuItem Header="새 탭에서 열기" Click="OnOpenInNewTab" />
+                            <MenuItem x:Name="FavoriteMenuItem" Header="즐겨찾기에 추가" Click="OnToggleFavorite" />
+                            <MenuItem Header="탐색기에서 보기" Click="OnReveal" />
+                            <MenuItem Header="터미널에서 열기" Click="OnTerminal" />
+                            <Separator />
+                            <MenuItem Header="복사 (Ctrl+C)" Click="OnCopy" />
+                            <MenuItem Header="잘라내기 (Ctrl+X)" Click="OnCut" />
+                            <MenuItem Header="붙여넣기 (Ctrl+V)" Click="OnPaste" />
+                            <Separator />
+                            <MenuItem Header="이름 바꾸기 (F2)" Click="OnRename" />
+                            <MenuItem Header="삭제 (휴지통)" Click="OnDelete" />
+                            <Separator />
+                            <MenuItem Header="새 폴더 (Ctrl+Shift+N)" Click="OnNewFolder" />
+                            <MenuItem Header="경로 복사" Click="OnCopyPath" />
+                            <MenuItem Header="속성 (Alt+Enter)" Click="OnProperties" />
+                        </ContextMenu>
+                    </ListView.ContextMenu>
+                </ListView>
+
+                <TextBlock Grid.Column="2"
+                           Text="불러오는 중…"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource SubTextBrush}"
+                           Visibility="{Binding Active.IsLoading, Converter={StaticResource BoolToVis}}" />
+            </Grid>
+        </Grid>
+    </Border>
+</UserControl>
